@@ -19,15 +19,7 @@ concurrency:
 jobs:
   executar-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 299
-
-    env:
-      DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
-      MONGODB_URI: ${{ secrets.MONGODB_URI }}
-      MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
-      COMMAND_PREFIX: "!"
-      CICLO_ECONOMICO_ATIVO: "true"
-      EVENTOS_ASSENTAMENTOS_ATIVOS: "true"
+    timeout-minutes: 300
 
     steps:
       - name: Checkout do MoonEconomy
@@ -43,23 +35,37 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Validar variáveis necessárias
+      - name: Verificar configuração dos Secrets
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
         run: |
-          test -n "$DISCORD_TOKEN" || (echo "DISCORD_TOKEN não configurada nos Secrets." && exit 1)
-          test -n "$MONGODB_URI" || (echo "MONGODB_URI não configurada nos Secrets." && exit 1)
-          test -n "$MONGODB_DATABASE" || (echo "MONGODB_DATABASE não configurada nos Secrets." && exit 1)
+          if [ -n "$DISCORD_TOKEN" ]; then echo "DISCORD_TOKEN: disponível"; else echo "DISCORD_TOKEN: indisponível"; fi
+          if [ -n "$MONGODB_URI" ]; then echo "MONGODB_URI: disponível"; else echo "MONGODB_URI: indisponível"; fi
+          if [ -n "$MONGODB_DATABASE" ]; then echo "MONGODB_DATABASE: disponível"; else echo "MONGODB_DATABASE: indisponível"; fi
 
-      - name: Executar MoonEconomy e reiniciar em caso de queda
+          test -n "$DISCORD_TOKEN" || exit 1
+          test -n "$MONGODB_URI" || exit 1
+          test -n "$MONGODB_DATABASE" || exit 1
+
+      - name: Executar MoonEconomy
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
+          COMMAND_PREFIX: "!"
+          CICLO_ECONOMICO_ATIVO: "true"
+          EVENTOS_ASSENTAMENTOS_ATIVOS: "true"
         shell: bash
         run: |
           echo "MoonEconomy iniciado em $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "Esta execução dura no máximo 4h59m. O cron inicia uma nova execução a cada 5 horas."
+          echo "Reinício interno: imediato após queda. Novo ciclo externo: cron a cada 5 horas."
 
           while true; do
             echo "Iniciando main.py..."
             python main.py
             codigo=$?
-
             echo "main.py encerrou com código $codigo em $(date -u '+%Y-%m-%d %H:%M:%S UTC')."
             echo "Reiniciando em 10 segundos..."
             sleep 10
