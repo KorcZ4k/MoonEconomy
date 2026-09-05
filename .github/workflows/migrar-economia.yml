@@ -10,6 +10,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: migracao-economia
+  cancel-in-progress: false
+
 jobs:
   migrar:
     runs-on: ubuntu-latest
@@ -20,8 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Obter economia de origem
-        run: |
-          git clone --depth 1 https://github.com/KorcZ4k/TensuraBot.git /tmp/TensuraBot
+        run: git clone --depth 1 https://github.com/KorcZ4k/TensuraBot.git /tmp/TensuraBot
 
       - name: Migrar módulos econômicos
         run: |
@@ -31,22 +34,16 @@ jobs:
             --exclude='hunos_interacoes.py' \
             --exclude='__pycache__' \
             /tmp/TensuraBot/comandos/ECONOMIA/ comandos/ECONOMIA/
-
-          # Remove qualquer arquivo interno de Hunos caso seja introduzido futuramente.
           rm -f comandos/ECONOMIA/Hunos.py comandos/ECONOMIA/hunos_interacoes.py
-
-          # Copia a camada de banco usada pela economia sem tocar no MongoDB.
           cp /tmp/TensuraBot/database/python/mongodb.py database/python/mongodb.py
           cp /tmp/TensuraBot/database/python/Mora.py database/python/Mora.py
-
-          # Configurações e tabelas de eventos econômicos já existentes no projeto.
           for f in ev_assent.json monstros.json racas.json; do
             if [ -f "/tmp/TensuraBot/database/json/$f" ]; then
               cp "/tmp/TensuraBot/database/json/$f" "database/json/$f"
             fi
           done
 
-      - name: Remover cache e referências internas de Hunos
+      - name: Remover cache e arquivos de Hunos
         run: |
           find comandos/ECONOMIA -type d -name __pycache__ -prune -exec rm -rf {} +
           find comandos/ECONOMIA -type f -iname '*hunos*' -delete
@@ -64,7 +61,8 @@ jobs:
           git add .
           if git diff --cached --quiet; then
             echo "Nenhuma alteração para migrar."
-          else
-            git commit -m "migra sistema econômico do TensuraBot"
-            git push
+            exit 0
           fi
+          git commit -m "migra sistema econômico do TensuraBot"
+          git pull --rebase origin main
+          git push
