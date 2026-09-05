@@ -7,10 +7,8 @@ load_dotenv()
 uri = os.getenv("MONGODB_URI")
 
 if not uri:
-    raise RuntimeError("MONGODB_URI não encontrada no ambiente")
+    raise RuntimeError("MONGODB_URI não encontrada no .env")
 
-# Usa exclusivamente a database já existente configurada no ambiente.
-# Este módulo não cria databases ou collections por conta própria.
 client = MongoClient(
     uri,
     tls=True,
@@ -19,3 +17,10 @@ client = MongoClient(
 )
 
 db = client[os.getenv("MONGODB_DATABASE")]
+
+
+try:
+    print("MongoDB conectado!")
+except Exception as e:
+    print("ERRO:")
+    print(repr(e))
