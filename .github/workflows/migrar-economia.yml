@@ -1,0 +1,70 @@
+name: Migrar economia do TensuraBot
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/migrar-economia.yml"
+      - "MIGRACAO_TRIGGER"
+
+permissions:
+  contents: write
+
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout MoonEconomy
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Obter economia de origem
+        run: |
+          git clone --depth 1 https://github.com/KorcZ4k/TensuraBot.git /tmp/TensuraBot
+
+      - name: Migrar módulos econômicos
+        run: |
+          mkdir -p comandos/ECONOMIA database/python database/json
+          rsync -a --delete \
+            --exclude='Hunos.py' \
+            --exclude='hunos_interacoes.py' \
+            --exclude='__pycache__' \
+            /tmp/TensuraBot/comandos/ECONOMIA/ comandos/ECONOMIA/
+
+          # Remove qualquer arquivo interno de Hunos caso seja introduzido futuramente.
+          rm -f comandos/ECONOMIA/Hunos.py comandos/ECONOMIA/hunos_interacoes.py
+
+          # Copia a camada de banco usada pela economia sem tocar no MongoDB.
+          cp /tmp/TensuraBot/database/python/mongodb.py database/python/mongodb.py
+          cp /tmp/TensuraBot/database/python/Mora.py database/python/Mora.py
+
+          # Configurações e tabelas de eventos econômicos já existentes no projeto.
+          for f in ev_assent.json monstros.json racas.json; do
+            if [ -f "/tmp/TensuraBot/database/json/$f" ]; then
+              cp "/tmp/TensuraBot/database/json/$f" "database/json/$f"
+            fi
+          done
+
+      - name: Remover cache e referências internas de Hunos
+        run: |
+          find comandos/ECONOMIA -type d -name __pycache__ -prune -exec rm -rf {} +
+          find comandos/ECONOMIA -type f -iname '*hunos*' -delete
+
+      - name: Registrar origem da migração
+        run: |
+          printf '%s\n' "TensuraBot source commit: $(git -C /tmp/TensuraBot rev-parse HEAD)" > MIGRATION_SOURCE.txt
+          printf '%s\n' "MongoDB: compartilhado; nenhuma database ou collection foi criada ou alterada pela migração." >> MIGRATION_SOURCE.txt
+          printf '%s\n' "Hunos: excluído do MoonEconomy e permanece no TensuraBot." >> MIGRATION_SOURCE.txt
+
+      - name: Commit da migração
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .
+          if git diff --cached --quiet; then
+            echo "Nenhuma alteração para migrar."
+          else
+            git commit -m "migra sistema econômico do TensuraBot"
+            git push
+          fi
