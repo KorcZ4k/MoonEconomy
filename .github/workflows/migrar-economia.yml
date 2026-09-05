@@ -1,25 +1,27 @@
 name: MoonEconomy Bot
 
 on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
   workflow_dispatch:
   schedule:
     - cron: "0 */5 * * *"
-  push:
-    paths:
-      - ".github/workflows/migrar-economia.yml"
-      - "main.py"
-      - "requirements.txt"
-      - "moon_economy/**"
-      - "comandos/ECONOMIA/**"
 
 concurrency:
-  group: mooneconomy-bot
-  cancel-in-progress: false
+  group: mooneconomy-bot-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   executar-bot:
+    # O bot só é iniciado em pushes na branch principal.
+    # Pull requests executam a validação sem expor Secrets a código não mesclado.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 299
 
     steps:
       - name: Checkout do MoonEconomy
@@ -35,19 +37,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Verificar configuração dos Secrets
+      - name: Verificar Secrets sem exibir valores
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           MONGODB_DATABASE: ${{ secrets.MONGODB_DATABASE }}
         run: |
-          if [ -n "$DISCORD_TOKEN" ]; then echo "DISCORD_TOKEN: disponível"; else echo "DISCORD_TOKEN: indisponível"; fi
-          if [ -n "$MONGODB_URI" ]; then echo "MONGODB_URI: disponível"; else echo "MONGODB_URI: indisponível"; fi
-          if [ -n "$MONGODB_DATABASE" ]; then echo "MONGODB_DATABASE: disponível"; else echo "MONGODB_DATABASE: indisponível"; fi
-
-          test -n "$DISCORD_TOKEN" || exit 1
-          test -n "$MONGODB_URI" || exit 1
-          test -n "$MONGODB_DATABASE" || exit 1
+          test -n "$DISCORD_TOKEN" || (echo "DISCORD_TOKEN indisponível." && exit 1)
+          test -n "$MONGODB_URI" || (echo "MONGODB_URI indisponível." && exit 1)
+          test -n "$MONGODB_DATABASE" || (echo "MONGODB_DATABASE indisponível." && exit 1)
+          echo "Secrets necessários disponíveis."
 
       - name: Executar MoonEconomy
         env:
@@ -60,13 +59,29 @@ jobs:
         shell: bash
         run: |
           echo "MoonEconomy iniciado em $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          echo "Reinício interno: imediato após queda. Novo ciclo externo: cron a cada 5 horas."
-
           while true; do
-            echo "Iniciando main.py..."
             python main.py
             codigo=$?
-            echo "main.py encerrou com código $codigo em $(date -u '+%Y-%m-%d %H:%M:%S UTC')."
-            echo "Reiniciando em 10 segundos..."
+            echo "main.py encerrou com código $codigo. Reiniciando em 10 segundos..."
             sleep 10
           done
+
+  validar-pull-request:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validar sintaxe
+        run: python -m compileall -q .
